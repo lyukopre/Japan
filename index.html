@@ -292,9 +292,10 @@
 
   .toast{
     position:fixed; left:50%; bottom:calc(22px + var(--safe-bottom)); transform:translate(-50%, 16px); z-index:80;
-    background:var(--text-primary); color:var(--bg); padding:11px 20px; border-radius:var(--radius-pill);
-    font-size:13.5px; font-weight:600; opacity:0; transition:opacity .25s ease, transform .25s ease; pointer-events:none;
-    box-shadow:0 8px 24px rgba(0,0,0,0.25); white-space:nowrap; max-width:88vw; overflow:hidden; text-overflow:ellipsis;
+    background:var(--text-primary); color:var(--bg); padding:12px 20px; border-radius:18px;
+    font-size:13.5px; font-weight:600; line-height:1.4; text-align:center; opacity:0;
+    transition:opacity .25s ease, transform .25s ease; pointer-events:none;
+    box-shadow:0 8px 24px rgba(0,0,0,0.25); max-width:min(86vw, 360px); width:max-content;
   }
   .toast.show{ opacity:1; transform:translate(-50%, 0); }
 
@@ -658,7 +659,8 @@ function showToast(msg){
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(showToast._tm);
-  showToast._tm = setTimeout(()=> t.classList.remove('show'), 2400);
+  const duration = Math.min(6000, Math.max(2400, msg.length * 60));
+  showToast._tm = setTimeout(()=> t.classList.remove('show'), duration);
 }
 function speakJapanese(text){
   if(!text) return;
@@ -1072,7 +1074,7 @@ async function fetchLiveRate(){
     render();
     showToast('Cambio aggiornato: 1€ = '+new Intl.NumberFormat('it-IT',{maximumFractionDigits:2}).format(rate)+'¥');
   }catch(e){
-    showToast('Aggiornamento non disponibile (serve la versione GitHub e una connessione)');
+    showToast('Aggiornamento non riuscito. Verifica la connessione.');
   }
 }
 
