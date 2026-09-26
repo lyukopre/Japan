@@ -193,8 +193,6 @@
 
   /* ---------- Section content ---------- */
   .section-wrap{ padding:14px 14px 8px; }
-  .group-label{ font-size:13px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; margin:18px 6px 8px; }
-  .group-label:first-child{ margin-top:4px; }
 
   .card{
     background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius-card);
@@ -211,14 +209,41 @@
   .card-foot span{ display:inline-flex; align-items:center; gap:4px; }
 
   .badge{
-    display:inline-flex; align-items:center; padding:4px 10px; border-radius:var(--radius-pill);
+    display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:var(--radius-pill);
     font-size:12px; font-weight:600; white-space:nowrap;
   }
+  .badge .dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
   .badge.neutral{ background:var(--accent-soft); color:var(--accent); }
+  .badge.neutral .dot{ background:var(--accent); }
   .badge.alta{ background:var(--danger-soft); color:var(--danger); }
+  .badge.alta .dot{ background:var(--danger); }
   .badge.media{ background:var(--warning-soft); color:var(--warning); }
+  .badge.media .dot{ background:var(--warning); }
   .badge.bassa{ background:var(--success-soft); color:var(--success); }
+  .badge.bassa .dot{ background:var(--success); }
   .badge.status{ background:rgba(120,120,128,0.16); color:var(--text-secondary); }
+  .badge.status .dot{ background:var(--text-secondary); }
+
+  /* city color dots */
+  .city-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; flex-shrink:0; vertical-align:middle; }
+
+  /* group headers: dot + label + divider line */
+  .group-label{ display:flex; align-items:center; gap:8px; margin:20px 4px 10px; }
+  .group-label:first-child{ margin-top:4px; }
+  .group-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .group-label-text{ font-size:14px; font-weight:700; color:var(--text-primary); letter-spacing:-0.01em; white-space:nowrap; }
+  .group-line{ flex:1; height:1px; background:var(--separator); }
+
+  /* valigia progress ring */
+  .valigia-progress-card{ display:flex; align-items:center; gap:16px; }
+  .ring-wrap{ position:relative; flex-shrink:0; width:64px; height:64px; }
+  .ring-wrap svg{ transform:rotate(-90deg); }
+  .ring-wrap .ring-fill{ transition:stroke-dashoffset .5s cubic-bezier(.32,.72,0,1); }
+  .ring-label{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:var(--accent); }
+
+  /* budget mini bar */
+  .budget-bar-track{ height:6px; border-radius:var(--radius-pill); background:var(--accent-soft); overflow:hidden; margin-top:12px; }
+  .budget-bar-fill{ height:100%; border-radius:var(--radius-pill); transition:width .35s ease, background-color .35s ease; }
 
   .pillbtn{
     display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:var(--radius-pill);
@@ -688,6 +713,48 @@ function urgencyClass(u){
   if(s.indexOf('bass') > -1) return 'bassa';
   return 'neutral';
 }
+function badgeHtml(cls, text){
+  if(!text) return '';
+  return '<span class="badge '+cls+'"><span class="dot"></span>'+esc(text)+'</span>';
+}
+/* fixed per-city accent colors, independent of the app's chosen accent (purely decorative) */
+const CITY_COLORS = [
+  { key:'Osaka', color:'#FF9500' },
+  { key:'Kyoto', color:'#C2185B' },
+  { key:'Takayama', color:'#34A853' },
+  { key:'Tokyo', color:'#007AFF' }
+];
+function cityColor(str){
+  if(!str) return '#8E8E93';
+  const found = CITY_COLORS.find(c => String(str).indexOf(c.key) > -1);
+  return found ? found.color : '#8E8E93';
+}
+function cityDot(str){
+  return '<span class="city-dot" style="background:'+cityColor(str)+'"></span>';
+}
+/* fixed per-section tile colors (Apple system palette), purely decorative */
+const TILE_COLORS = {
+  itinerario:'0,122,255', hotel:'88,86,214', trasporti:'50,173,230', app:'48,176,199',
+  valigia:'255,149,0', attrazioni:'175,82,222', guida:'162,132,94', frasi:'0,199,190',
+  cibo:'255,204,0', shopping:'255,45,85', emergenze:'255,59,48', budget:'52,199,89',
+  mappa:'142,142,147'
+};
+function tileBg(key){
+  const rgb = TILE_COLORS[key] || '200,68,46';
+  const alpha = key === 'cibo' ? 0.22 : 0.16;
+  return 'rgba('+rgb+','+alpha+')';
+}
+function progressRingSvg(pct, size, stroke){
+  size = size || 64; stroke = stroke || 7;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const offset = c * (1 - clamped/100);
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+
+    '<circle cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" fill="none" stroke="var(--accent-soft)" stroke-width="'+stroke+'"/>'+
+    '<circle class="ring-fill" cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" fill="none" stroke="var(--accent)" stroke-width="'+stroke+'" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+offset+'"/>'+
+    '</svg>';
+}
 function groupBy(rows, key){
   const out = []; const idx = {};
   rows.forEach(r => {
@@ -818,7 +885,7 @@ function tileHtml(key){
     : key==='guida' ? ((state.data[key]?state.data[key].length:0)+' consigli')
     : ((state.data[key]?state.data[key].length:0)+' voci');
   return '<button class="tile'+(reorderMode?' tile-reorder':'')+'" data-nav="'+key+'">'+
-    '<div class="tile-icon">'+meta.icon+'</div>'+
+    '<div class="tile-icon" style="background:'+tileBg(key)+'">'+meta.icon+'</div>'+
     '<div class="tile-title">'+esc(meta.title)+'</div>'+
     '<div class="tile-desc">'+esc(desc)+'</div>'+
     '</button>';
@@ -848,7 +915,7 @@ function renderItinerario(){
       '<div class="date-chip"><div class="num">'+d.num+'</div><div class="mon">'+d.mon+'</div></div>'+
       '<div class="card-main">'+
       '<div class="card-row" style="justify-content:space-between;align-items:center">'+
-      '<div class="weekday-tag">'+esc(d.wd)+' · '+esc(r['Città']||'')+'</div>'+
+      '<div class="weekday-tag">'+esc(d.wd)+' · '+cityDot(r['Città'])+esc(r['Città']||'')+'</div>'+
       editBtn('itinerario', r._id)+
       '</div>'+
       '<p class="card-body">'+esc(r['Attività Principali']||'')+'</p>'+
@@ -872,7 +939,7 @@ function renderHotel(){
     const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-main"><div class="card-title">'+esc(s.hotel)+'</div>'+
-      '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(s.city)+' · '+(s.nights||1)+' nott'+((s.nights||1)>1?'i':'e')+'</div></div>'+
+      '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+cityDot(s.city)+esc(s.city)+' · '+(s.nights||1)+' nott'+((s.nights||1)>1?'i':'e')+'</div></div>'+
       editBtn('hotel', s._id)+
       '</div>'+
       '<div class="card-foot"><span>📅 '+fmtDateLong(s.checkin)+' → '+fmtDateLong(checkout)+'</span></div>'+
@@ -916,7 +983,7 @@ function renderApp(){
     const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-title">'+esc(r['App']||'')+'</div>'+
-      '<div class="rightcluster"><span class="badge '+urgencyClass(r['Urgenza Configurazione'])+'">'+esc(r['Urgenza Configurazione']||'')+'</span>'+editBtn('app', r._id)+'</div>'+
+      '<div class="rightcluster">'+badgeHtml(urgencyClass(r['Urgenza Configurazione']), r['Urgenza Configurazione'])+editBtn('app', r._id)+'</div>'+
       '</div>'+
       '<div class="card-note" style="margin-top:2px;color:var(--text-secondary)">'+esc(r['Categoria']||'')+'</div>'+
       '<p class="card-body" style="margin-top:8px">'+esc(r['Funzione Principale']||'')+'</p>'+
@@ -947,17 +1014,20 @@ function renderValigia(){
       '<div class="card-main">'+
       '<div class="card-row" style="justify-content:space-between;align-items:center">'+
       '<span class="check-title'+(checked?' done':'')+'">'+esc(r['Articolo']||'')+'</span>'+
-      '<div class="rightcluster"><span class="badge '+urgencyClass(r['Urgenza'])+'">'+esc(r['Urgenza']||'')+'</span>'+editBtn('valigia', r._id)+'</div>'+
+      '<div class="rightcluster">'+badgeHtml(urgencyClass(r['Urgenza']), r['Urgenza'])+editBtn('valigia', r._id)+'</div>'+
       '</div>'+
-      '<div class="card-foot" style="margin-top:6px"><span class="badge status">'+esc(r['Categoria']||'')+'</span><span class="badge status">'+esc(r['Messo in Valigia?']||'')+'</span></div>'+
+      '<div class="card-foot" style="margin-top:6px">'+badgeHtml('status', r['Categoria'])+badgeHtml('status', r['Messo in Valigia?'])+'</div>'+
       (r['Note per il Giappone'] ? '<p class="card-note">'+esc(r['Note per il Giappone'])+'</p>' : '')+
       '</div></div></div>';
     return reorderWrap('valigia', r._id, card);
   }).join('');
   return renderTopbar('Valigia')+
     '<div class="section-wrap">'+
-    '<div class="card"><div class="card-row" style="justify-content:space-between"><span class="card-body" style="font-weight:600">'+doneCount+' di '+allRows.length+' pronti</span><span class="card-note" style="margin:0">'+pct+'%</span></div>'+
-    '<div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div></div>'+
+    '<div class="card valigia-progress-card">'+
+    '<div class="ring-wrap">'+progressRingSvg(pct)+'<div class="ring-label">'+pct+'%</div></div>'+
+    '<div><div class="card-body" style="font-weight:600">'+doneCount+' di '+allRows.length+' pronti</div>'+
+    '<div class="card-note" style="margin-top:2px">'+(pct>=100?'Valigia pronta! 🎒':'Continua così')+'</div></div>'+
+    '</div>'+
     chips+
     (items||'<div class="empty">Nessun articolo con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('valigia'));
 }
@@ -967,8 +1037,8 @@ function renderGroupedByCity(section, rows, cfg, grouped){
   if(!rows.length) return '<div class="empty">Nessuna voce. Tocca + per aggiungerne una.</div>';
   function buildCard(r){
     const title = esc(r[cfg.titleKey]||'');
-    const badge = cfg.badgeKey && r[cfg.badgeKey] ? '<span class="badge neutral">'+esc(r[cfg.badgeKey])+'</span>' : '';
-    const urg = cfg.urgencyKey && r[cfg.urgencyKey] ? '<span class="badge '+urgencyClass(r[cfg.urgencyKey])+'">'+esc(r[cfg.urgencyKey])+'</span>' : '';
+    const badge = cfg.badgeKey && r[cfg.badgeKey] ? badgeHtml('neutral', r[cfg.badgeKey]) : '';
+    const urg = cfg.urgencyKey && r[cfg.urgencyKey] ? badgeHtml(urgencyClass(r[cfg.urgencyKey]), r[cfg.urgencyKey]) : '';
     const sub = cfg.subKey && r[cfg.subKey] ? '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(r[cfg.subKey])+'</div>' : '';
     const note = cfg.noteKey && r[cfg.noteKey] ? '<p class="card-note">'+esc(r[cfg.noteKey])+'</p>' : '';
     const btn = mapsBtn(r[cfg.linkKey], 'Apri in Maps');
@@ -986,7 +1056,7 @@ function renderGroupedByCity(section, rows, cfg, grouped){
   }
   const groups = groupBy(rows, 'Città');
   return groups.map(g=>{
-    return '<div class="group-label">'+esc(g.key)+'</div>'+g.items.map(buildCard).join('');
+    return '<div class="group-label"><span class="group-dot" style="background:'+cityColor(g.key)+'"></span><span class="group-label-text">'+esc(g.key)+'</span><span class="group-line"></span></div>'+g.items.map(buildCard).join('');
   }).join('');
 }
 function renderAttrazioni(){
@@ -1068,7 +1138,7 @@ function renderEmergenze(){
     const tel = telHref(r['Numero / Riferimento']);
     const numHtml = tel
       ? '<a class="pillbtn filled" href="'+tel+'">📞 '+esc(r['Numero / Riferimento'])+'</a>'
-      : '<span class="badge status">'+esc(r['Numero / Riferimento']||'')+'</span>';
+      : badgeHtml('status', r['Numero / Riferimento']);
     const card = '<div class="card">'+
       '<div class="card-row" style="align-items:center;gap:10px;justify-content:space-between">'+
       '<div class="card-row" style="align-items:center;gap:10px"><span style="font-size:22px">'+icon+'</span>'+
@@ -1105,10 +1175,12 @@ function renderBudget(){
     const c = computeBudgetRow(r);
     const diffClass = c.diffYen >= 0 ? 'pos' : 'neg';
     const d = fmtDateBadge(r['Data']);
+    const barPct = c.previstoYen > 0 ? Math.min(100, (c.spesaYen/c.previstoYen)*100) : 0;
+    const barColor = c.spesaYen > c.previstoYen ? 'var(--danger)' : 'var(--success)';
     const card = '<div class="card budget-card" data-budget-row="'+r._id+'">'+
       '<div class="top-line">'+
       '<div><div class="card-title" style="margin-bottom:1px">'+esc(d.wd)+' '+d.num+' '+d.mon+'</div>'+
-      '<div class="card-note" style="margin:0;color:var(--text-secondary)">'+esc(r['Note / Categoria']||'')+'</div></div>'+
+      '<div class="card-note" style="margin:0;color:var(--text-secondary)">'+cityDot(r['Note / Categoria'])+esc(r['Note / Categoria']||'')+'</div></div>'+
       '<div style="text-align:right">'+
       '<div style="display:flex;justify-content:flex-end;margin-bottom:2px">'+editBtn('budget', r._id)+'</div>'+
       '<div class="prev">Previsto</div><div style="font-weight:700">'+fmtYen(c.previstoYen)+'</div>'+
@@ -1119,6 +1191,7 @@ function renderBudget(){
       '<input type="number" inputmode="decimal" data-budget-input="'+r._id+'" value="'+c.spesaYen+'">'+
       '</div>'+
       '<div class="budget-eur-small" id="budget-eur-'+r._id+'">'+fmtEur(yenToEur(c.spesaYen))+'</div>'+
+      '<div class="budget-bar-track"><div class="budget-bar-fill" id="budget-bar-'+r._id+'" style="width:'+barPct+'%;background:'+barColor+'"></div></div>'+
       '<div class="diff-line"><span>Differenza</span><span class="val '+diffClass+'" id="budget-diff-'+r._id+'">'+(c.diffYen>=0?'+':'')+fmtYen(c.diffYen)+' · '+fmtEur(yenToEur(c.diffYen))+'</span></div>'+
       '</div>';
     return reorderWrap('budget', r._id, card);
@@ -1147,6 +1220,12 @@ function updateBudgetRowUI(id){
   const c = computeBudgetRow(row);
   const eurEl = document.getElementById('budget-eur-'+id);
   if(eurEl) eurEl.textContent = fmtEur(yenToEur(c.spesaYen));
+  const barEl = document.getElementById('budget-bar-'+id);
+  if(barEl){
+    const barPct = c.previstoYen > 0 ? Math.min(100, (c.spesaYen/c.previstoYen)*100) : 0;
+    barEl.style.width = barPct + '%';
+    barEl.style.background = c.spesaYen > c.previstoYen ? 'var(--danger)' : 'var(--success)';
+  }
   const diffEl = document.getElementById('budget-diff-'+id);
   if(diffEl){
     diffEl.textContent = (c.diffYen>=0?'+':'')+fmtYen(c.diffYen)+' · '+fmtEur(yenToEur(c.diffYen));
