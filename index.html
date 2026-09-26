@@ -129,7 +129,7 @@
   }
   :root[data-theme="dark"] .topbar{ background:rgba(30,30,32,0.6); }
   @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .topbar{ background:rgba(30,30,32,0.6); } }
-  .topbar-side{ flex:1; display:flex; align-items:center; min-width:28px; }
+  .topbar-side{ flex:1; display:flex; align-items:center; gap:8px; min-width:28px; }
   .topbar-side.right{ justify-content:flex-end; }
   .topbar-title{ flex:2; text-align:center; font-size:16px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .backbtn{
@@ -162,12 +162,28 @@
     display:flex; flex-direction:column; gap:10px; transition:transform .15s ease, box-shadow .15s ease;
   }
   .tile:active{ transform:scale(0.96); }
+  .tile.tile-reorder{ cursor:grab; }
+  .tile.tile-ghost{ opacity:0.35; }
+  .tile.tile-chosen{ box-shadow:0 14px 28px rgba(0,0,0,0.28); transform:scale(1.04); cursor:grabbing; }
   .tile-icon{
     width:44px; height:44px; border-radius:14px; display:flex; align-items:center; justify-content:center;
     font-size:22px; background:var(--accent-soft);
   }
   .tile-title{ font-size:15px; font-weight:600; letter-spacing:-0.01em; }
   .tile-desc{ font-size:12.5px; color:var(--text-secondary); margin-top:-6px; }
+
+  /* ---------- Drag-to-reorder (cards within a section) ---------- */
+  .drag-wrap{ display:flex; align-items:stretch; gap:2px; margin-bottom:12px; }
+  .drag-wrap .card{ margin-bottom:0; flex:1; min-width:0; }
+  .drag-handle{
+    flex:0 0 auto; width:34px; display:flex; align-items:center; justify-content:center;
+    color:var(--text-tertiary); font-size:19px; cursor:grab; touch-action:none; -webkit-user-select:none; user-select:none;
+  }
+  .drag-inner{ flex:1; min-width:0; }
+  .drag-ghost{ opacity:0.3; }
+  .drag-ghost .card{ box-shadow:none; }
+  .drag-chosen .card{ box-shadow:0 12px 26px rgba(0,0,0,0.22); }
+  .drag-chosen{ cursor:grabbing; }
 
   /* ---------- Filter chips ---------- */
   .filter-row{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 4px; margin:0 -2px 14px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
@@ -184,6 +200,9 @@
     background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius-card);
     box-shadow:var(--shadow-card); padding:16px; margin-bottom:12px;
   }
+  .map-card{ display:block; transition:transform .12s ease; }
+  .map-card:active{ transform:scale(0.98); }
+  .map-chevron{ font-size:22px; font-weight:600; color:var(--accent); flex-shrink:0; line-height:1; }
   .card-row{ display:flex; gap:12px; align-items:flex-start; }
   .card-title{ font-size:16px; font-weight:650; letter-spacing:-0.01em; margin:0 0 3px; }
   .card-body{ font-size:14.5px; color:var(--text-primary); line-height:1.45; margin:0; }
@@ -357,6 +376,7 @@ const ICONS = {
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>',
   close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  reorder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>'
 };
 
@@ -372,9 +392,11 @@ const SECTION_META = {
   cibo:{ title:'Cibo & Ristoranti', icon:'🍜' },
   shopping:{ title:'Shopping', icon:'🛍️' },
   emergenze:{ title:'Emergenze', icon:'🚨' },
-  budget:{ title:'Budget', icon:'💴' }
+  budget:{ title:'Budget', icon:'💴' },
+  mappa:{ title:'Mappa', icon:'🗺️' }
 };
 const SECTION_ORDER = ['itinerario','hotel','trasporti','app','valigia','attrazioni','guida','frasi','cibo','shopping','emergenze','budget'];
+const HOME_KEYS = SECTION_ORDER.concat(['mappa']);
 
 /* fields shown in the add/edit form for each section (key must match the data object's key) */
 const FIELD_SCHEMA = {
@@ -466,6 +488,38 @@ let currentView = 'home';
 let modalSection = null;
 let modalItemId = null;
 let activeFilter = {}; /* section -> selected filter value (or 'todo'/'done' for valigia) */
+let mapFilter = null; /* selected source section for the Mappa view, or null for "all" */
+let reorderMode = false; /* true while the current view (home tiles or one section's cards) is in drag-to-reorder mode */
+let dragCtx = null; /* active drag session, set while a finger is down on a handle */
+
+const MAP_SOURCE_META = {
+  hotel:{ label:'Alloggi', icon:'🏨' },
+  trasporti:{ label:'Trasporti', icon:'🚄' },
+  attrazioni:{ label:'Attrazioni', icon:'⛩️' },
+  cibo:{ label:'Ristoranti', icon:'🍜' },
+  shopping:{ label:'Shopping', icon:'🛍️' }
+};
+function collectMapPlaces(){
+  const places = [];
+  state.data.hotel.forEach(s=>{
+    if(s.link) places.push({ source:'hotel', title:s.hotel, subtitle:s.city, link:s.link });
+  });
+  state.data.trasporti.forEach(r=>{
+    const name = r['Tratta / Servizio'] || '';
+    if(r['Link Maps Partenza']) places.push({ source:'trasporti', title:name, subtitle:'Partenza', link:r['Link Maps Partenza'] });
+    if(r['Link Maps Arrivo']) places.push({ source:'trasporti', title:name, subtitle:'Arrivo', link:r['Link Maps Arrivo'] });
+  });
+  state.data.attrazioni.forEach(r=>{
+    if(r['Link Google Maps']) places.push({ source:'attrazioni', title:r['Attrazione'], subtitle:r['Città'], link:r['Link Google Maps'] });
+  });
+  state.data.cibo.forEach(r=>{
+    if(r['Link Google Maps']) places.push({ source:'cibo', title:r['Specialità / Piatto'], subtitle:r['Città'], link:r['Link Google Maps'] });
+  });
+  state.data.shopping.forEach(r=>{
+    if(r['Link Google Maps']) places.push({ source:'shopping', title:r['Brand / Negozio'], subtitle:[r['Città'], r['Quartiere']].filter(Boolean).join(' · '), link:r['Link Google Maps'] });
+  });
+  return places;
+}
 
 const FILTER_CONFIG = {
   itinerario: 'Città',
@@ -501,6 +555,14 @@ function applyFilter(section, rows){
 function genId(){ return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
 /* ---------------- initial data ---------------- */
+function sanitizeSectionOrder(arr){
+  const valid = Array.isArray(arr) ? arr.filter(k => HOME_KEYS.indexOf(k) > -1) : [];
+  const seen = {};
+  const deduped = [];
+  valid.forEach(k=>{ if(!seen[k]){ seen[k]=true; deduped.push(k); } });
+  HOME_KEYS.forEach(k=>{ if(!seen[k]) deduped.push(k); });
+  return deduped;
+}
 function buildInitialData(){
   const d = {};
   SECTION_ORDER.forEach(key=>{
@@ -527,6 +589,7 @@ function loadState(){
     Object.keys(base).forEach(k=>{ if(base[k]===undefined) base[k]=DEFAULTS[k]; });
     SECTION_ORDER.forEach(key=>{ if(!Array.isArray(saved.data[key])) saved.data[key]=[]; saved.data[key].forEach(it=>{ if(!it._id) it._id=genId(); }); });
     base.data = saved.data;
+    base.sectionOrder = sanitizeSectionOrder(saved.sectionOrder);
     return base;
   }
   // legacy (v1) migration attempt, or brand new
@@ -534,6 +597,7 @@ function loadState(){
     try{ const raw = localStorage.getItem('giappone_trip_state_v1'); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
   })();
   const base = Object.assign({}, DEFAULTS);
+  base.sectionOrder = sanitizeSectionOrder(null);
   const data = buildInitialData();
   if(legacy){
     if(typeof legacy.theme === 'string') base.theme = legacy.theme;
@@ -654,6 +718,18 @@ function mapsBtn(link, label){
 function editBtn(section, id){
   return '<button class="editbtn" data-edit-section="'+section+'" data-edit-id="'+id+'" aria-label="Modifica">'+ICONS.edit+'</button>';
 }
+function reorderWrap(section, id, cardHtml){
+  if(!(reorderMode && currentView === section)) return cardHtml;
+  return '<div class="drag-wrap" data-reorder-id="'+id+'">'+
+    '<span class="drag-handle" aria-label="Trascina per riordinare">☰</span>'+
+    '<div class="drag-inner">'+cardHtml+'</div>'+
+    '</div>';
+}
+function reorderToggleBtn(){
+  if(!(currentView === 'home' || SECTION_ORDER.indexOf(currentView) > -1)) return '';
+  if(reorderMode) return '<button class="pillbtn filled" data-action="toggle-reorder">Fatto</button>';
+  return '<button class="iconbtn" data-action="toggle-reorder" aria-label="Riordina">'+ICONS.reorder+'</button>';
+}
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -675,8 +751,8 @@ function speakJapanese(text){
 }
 
 /* ---------------- navigation ---------------- */
-function navigateTo(view){ currentView = view; activeFilter = {}; closeModal(); render(); window.scrollTo(0,0); playViewTransition(); }
-function goBack(){ if(currentView === 'home') return; currentView = 'home'; activeFilter = {}; closeModal(); render(); window.scrollTo(0,0); playViewTransition(); }
+function navigateTo(view){ currentView = view; activeFilter = {}; mapFilter = null; reorderMode = false; dragCtx = null; closeModal(); render(); window.scrollTo(0,0); playViewTransition(); }
+function goBack(){ if(currentView === 'home') return; currentView = 'home'; activeFilter = {}; mapFilter = null; reorderMode = false; dragCtx = null; closeModal(); render(); window.scrollTo(0,0); playViewTransition(); }
 function playViewTransition(){
   const appEl = document.getElementById('app');
   appEl.classList.remove('view-anim');
@@ -691,7 +767,14 @@ function renderTopbar(title, opts){
   const left = showBack
     ? '<button class="backbtn" data-action="back">'+ICONS.back+'<span>Indietro</span></button>'
     : '';
-  const right = opts.hideSettings ? '' : '<button class="iconbtn" data-nav="settings" aria-label="Impostazioni">'+ICONS.gear+'</button>';
+  let right;
+  if(reorderMode){
+    right = reorderToggleBtn();
+  } else {
+    const reorderBtn = reorderToggleBtn();
+    const settingsBtn = opts.hideSettings ? '' : '<button class="iconbtn" data-nav="settings" aria-label="Impostazioni">'+ICONS.gear+'</button>';
+    right = reorderBtn + settingsBtn;
+  }
   return '<div class="topbar"><div class="topbar-side">'+left+'</div><div class="topbar-title">'+(showBack?esc(title):'')+'</div><div class="topbar-side right">'+right+'</div></div>';
 }
 function fabHtml(section){
@@ -728,17 +811,20 @@ function tripStatus(){
   }
   return 'Bentornato — viaggio concluso 🎌';
 }
+function tileHtml(key){
+  const meta = SECTION_META[key];
+  const desc = key==='mappa' ? (collectMapPlaces().length+' luoghi')
+    : key==='budget' ? 'Spese del viaggio'
+    : key==='guida' ? ((state.data[key]?state.data[key].length:0)+' consigli')
+    : ((state.data[key]?state.data[key].length:0)+' voci');
+  return '<button class="tile'+(reorderMode?' tile-reorder':'')+'" data-nav="'+key+'">'+
+    '<div class="tile-icon">'+meta.icon+'</div>'+
+    '<div class="tile-title">'+esc(meta.title)+'</div>'+
+    '<div class="tile-desc">'+esc(desc)+'</div>'+
+    '</button>';
+}
 function renderHome(){
-  const tiles = SECTION_ORDER.map(key=>{
-    const meta = SECTION_META[key];
-    const count = state.data[key] ? state.data[key].length : 0;
-    const desc = key==='budget' ? 'Spese del viaggio' : key==='guida' ? (count+' consigli') : (count+' voci');
-    return '<button class="tile" data-nav="'+key+'">'+
-      '<div class="tile-icon">'+meta.icon+'</div>'+
-      '<div class="tile-title">'+esc(meta.title)+'</div>'+
-      '<div class="tile-desc">'+esc(desc)+'</div>'+
-      '</button>';
-  }).join('');
+  const tiles = state.sectionOrder.map(tileHtml).join('');
   return renderTopbar('', {})+
     '<div class="hero">'+heroMarkSvg()+
     '<h1>Giappone</h1>'+
@@ -746,17 +832,19 @@ function renderHome(){
     '<div class="status-pill">'+esc(tripStatus())+'</div>'+
     '</div>'+
     '<div class="grid">'+tiles+'</div>'+
-    '<div class="footer-note">Tocca una sezione per i dettagli. Usa la matita per modificare una voce, il tasto + per aggiungerne una nuova.</div>';
+    (reorderMode ? '<div class="footer-note">Trascina una card per spostarla. Tocca Fatto per confermare.</div>'
+      : '<div class="footer-note">Tocca una sezione per i dettagli. Usa la matita per modificare una voce, il tasto + per aggiungerne una nuova.</div>');
 }
 
 /* ---------------- itinerario ---------------- */
 function renderItinerario(){
   const allRows = state.data.itinerario;
-  const chips = filterChipsHtml('itinerario', allRows, FILTER_CONFIG.itinerario);
-  const rows = applyFilter('itinerario', allRows);
+  const dragging = reorderMode && currentView === 'itinerario';
+  const chips = dragging ? '' : filterChipsHtml('itinerario', allRows, FILTER_CONFIG.itinerario);
+  const rows = dragging ? allRows : applyFilter('itinerario', allRows);
   const items = rows.map(r=>{
     const d = fmtDateBadge(r['Data']);
-    return '<div class="card"><div class="card-row">'+
+    const card = '<div class="card"><div class="card-row">'+
       '<div class="date-chip"><div class="num">'+d.num+'</div><div class="mon">'+d.mon+'</div></div>'+
       '<div class="card-main">'+
       '<div class="card-row" style="justify-content:space-between;align-items:center">'+
@@ -768,18 +856,20 @@ function renderItinerario(){
       '<span>🛌 '+esc(r['Pernottamento']||'—')+'</span>'+
       '<span>🚆 '+esc(r['Spostamento']||'—')+'</span>'+
       '</div></div></div></div>';
+    return reorderWrap('itinerario', r._id, card);
   }).join('');
-  return renderTopbar('Itinerario')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna voce con questo filtro.</div>')+'</div>'+fabHtml('itinerario');
+  return renderTopbar('Itinerario')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna voce con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('itinerario'));
 }
 
 /* ---------------- hotel ---------------- */
 function renderHotel(){
   const allStays = state.data.hotel;
-  const chips = filterChipsHtml('hotel', allStays, FILTER_CONFIG.hotel);
-  const stays = applyFilter('hotel', allStays);
+  const dragging = reorderMode && currentView === 'hotel';
+  const chips = dragging ? '' : filterChipsHtml('hotel', allStays, FILTER_CONFIG.hotel);
+  const stays = dragging ? allStays : applyFilter('hotel', allStays);
   const items = stays.map(s=>{
     const checkout = addDaysStr(s.checkin, s.nights||1);
-    return '<div class="card">'+
+    const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-main"><div class="card-title">'+esc(s.hotel)+'</div>'+
       '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(s.city)+' · '+(s.nights||1)+' nott'+((s.nights||1)>1?'i':'e')+'</div></div>'+
@@ -789,18 +879,20 @@ function renderHotel(){
       (s.note ? '<p class="card-note">'+esc(s.note)+'</p>' : '')+
       '<div class="btnrow">'+mapsBtn(s.link,'Apri hotel in Maps')+'</div>'+
       '</div>';
+    return reorderWrap('hotel', s._id, card);
   }).join('');
-  return renderTopbar('Hotel & Alloggi')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessun soggiorno con questo filtro.</div>')+'</div>'+fabHtml('hotel');
+  return renderTopbar('Hotel & Alloggi')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessun soggiorno con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('hotel'));
 }
 
 /* ---------------- trasporti ---------------- */
 function renderTrasporti(){
   const allRows = state.data.trasporti;
-  const chips = filterChipsHtml('trasporti', allRows, FILTER_CONFIG.trasporti);
-  const rows = applyFilter('trasporti', allRows);
+  const dragging = reorderMode && currentView === 'trasporti';
+  const chips = dragging ? '' : filterChipsHtml('trasporti', allRows, FILTER_CONFIG.trasporti);
+  const rows = dragging ? allRows : applyFilter('trasporti', allRows);
   const items = rows.map(r=>{
     const btns = mapsBtn(r['Link Maps Partenza'],'Partenza') + mapsBtn(r['Link Maps Arrivo'],'Arrivo');
-    return '<div class="card">'+
+    const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-main"><div class="card-title">'+esc(r['Tratta / Servizio']||'')+'</div>'+
       '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(r['Mezzo / Vettore']||'')+'</div></div>'+
@@ -809,17 +901,19 @@ function renderTrasporti(){
       '<div class="card-foot"><span>⏱ '+esc(r['Durata']||'—')+'</span><span>💰 '+esc(r['Costo Stimato']||'—')+'</span></div>'+
       (btns ? '<div class="btnrow">'+btns+'</div>' : '')+
       '</div>';
+    return reorderWrap('trasporti', r._id, card);
   }).join('');
-  return renderTopbar('Trasporti')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna tratta con questo filtro.</div>')+'</div>'+fabHtml('trasporti');
+  return renderTopbar('Trasporti')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna tratta con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('trasporti'));
 }
 
 /* ---------------- app ---------------- */
 function renderApp(){
   const allRows = state.data.app;
-  const chips = filterChipsHtml('app', allRows, FILTER_CONFIG.app);
-  const rows = applyFilter('app', allRows);
+  const dragging = reorderMode && currentView === 'app';
+  const chips = dragging ? '' : filterChipsHtml('app', allRows, FILTER_CONFIG.app);
+  const rows = dragging ? allRows : applyFilter('app', allRows);
   const items = rows.map(r=>{
-    return '<div class="card">'+
+    const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-title">'+esc(r['App']||'')+'</div>'+
       '<div class="rightcluster"><span class="badge '+urgencyClass(r['Urgenza Configurazione'])+'">'+esc(r['Urgenza Configurazione']||'')+'</span>'+editBtn('app', r._id)+'</div>'+
@@ -828,25 +922,27 @@ function renderApp(){
       '<p class="card-body" style="margin-top:8px">'+esc(r['Funzione Principale']||'')+'</p>'+
       (r['Note'] ? '<p class="card-note">'+esc(r['Note'])+'</p>' : '')+
       '</div>';
+    return reorderWrap('app', r._id, card);
   }).join('');
-  return renderTopbar('App da preparare')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna app con questo filtro.</div>')+'</div>'+fabHtml('app');
+  return renderTopbar('App da preparare')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna app con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('app'));
 }
 
 /* ---------------- valigia ---------------- */
 function renderValigia(){
   const allRows = state.data.valigia;
+  const dragging = reorderMode && currentView === 'valigia';
   const doneCount = allRows.reduce((acc,r)=> acc + (r._done ? 1 : 0), 0);
   const pct = allRows.length ? Math.round(doneCount/allRows.length*100) : 0;
-  const statusFilter = activeFilter.valigia || '';
-  const rows = statusFilter === 'done' ? allRows.filter(r=>r._done) : statusFilter === 'todo' ? allRows.filter(r=>!r._done) : allRows;
-  const chips = '<div class="filter-row">'+
+  const statusFilter = dragging ? '' : (activeFilter.valigia || '');
+  const rows = dragging ? allRows : (statusFilter === 'done' ? allRows.filter(r=>r._done) : statusFilter === 'todo' ? allRows.filter(r=>!r._done) : allRows);
+  const chips = dragging ? '' : ('<div class="filter-row">'+
     '<button class="filter-chip'+(!statusFilter?' active':'')+'" data-filter-section="valigia" data-filter-value="">Tutti</button>'+
     '<button class="filter-chip'+(statusFilter==='todo'?' active':'')+'" data-filter-section="valigia" data-filter-value="todo">Da fare</button>'+
     '<button class="filter-chip'+(statusFilter==='done'?' active':'')+'" data-filter-section="valigia" data-filter-value="done">Fatti</button>'+
-    '</div>';
+    '</div>');
   const items = rows.map(r=>{
     const checked = !!r._done;
-    return '<div class="card"><div class="check-row">'+
+    const card = '<div class="card"><div class="check-row">'+
       '<button class="checkbox'+(checked?' checked':'')+'" data-toggle-done="'+r._id+'" aria-label="Segna come pronto">'+ICONS.check+'</button>'+
       '<div class="card-main">'+
       '<div class="card-row" style="justify-content:space-between;align-items:center">'+
@@ -856,81 +952,95 @@ function renderValigia(){
       '<div class="card-foot" style="margin-top:6px"><span class="badge status">'+esc(r['Categoria']||'')+'</span><span class="badge status">'+esc(r['Messo in Valigia?']||'')+'</span></div>'+
       (r['Note per il Giappone'] ? '<p class="card-note">'+esc(r['Note per il Giappone'])+'</p>' : '')+
       '</div></div></div>';
+    return reorderWrap('valigia', r._id, card);
   }).join('');
   return renderTopbar('Valigia')+
     '<div class="section-wrap">'+
     '<div class="card"><div class="card-row" style="justify-content:space-between"><span class="card-body" style="font-weight:600">'+doneCount+' di '+allRows.length+' pronti</span><span class="card-note" style="margin:0">'+pct+'%</span></div>'+
     '<div class="progress-track"><div class="progress-fill" style="width:'+pct+'%"></div></div></div>'+
     chips+
-    (items||'<div class="empty">Nessun articolo con questo filtro.</div>')+'</div>'+fabHtml('valigia');
+    (items||'<div class="empty">Nessun articolo con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('valigia'));
 }
 
 /* ---------------- attrazioni / cibo / shopping (grouped by city) ---------------- */
-function renderGroupedByCity(section, rows, cfg){
+function renderGroupedByCity(section, rows, cfg, grouped){
   if(!rows.length) return '<div class="empty">Nessuna voce. Tocca + per aggiungerne una.</div>';
+  function buildCard(r){
+    const title = esc(r[cfg.titleKey]||'');
+    const badge = cfg.badgeKey && r[cfg.badgeKey] ? '<span class="badge neutral">'+esc(r[cfg.badgeKey])+'</span>' : '';
+    const urg = cfg.urgencyKey && r[cfg.urgencyKey] ? '<span class="badge '+urgencyClass(r[cfg.urgencyKey])+'">'+esc(r[cfg.urgencyKey])+'</span>' : '';
+    const sub = cfg.subKey && r[cfg.subKey] ? '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(r[cfg.subKey])+'</div>' : '';
+    const note = cfg.noteKey && r[cfg.noteKey] ? '<p class="card-note">'+esc(r[cfg.noteKey])+'</p>' : '';
+    const btn = mapsBtn(r[cfg.linkKey], 'Apri in Maps');
+    const card = '<div class="card">'+
+      '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
+      '<div class="card-main"><div class="card-title">'+title+'</div>'+sub+'</div>'+
+      '<div class="rightcluster">'+badge+urg+editBtn(section, r._id)+'</div>'+
+      '</div>'+note+
+      (btn ? '<div class="btnrow">'+btn+'</div>' : '')+
+      '</div>';
+    return reorderWrap(section, r._id, card);
+  }
+  if(!grouped){
+    return rows.map(buildCard).join('');
+  }
   const groups = groupBy(rows, 'Città');
   return groups.map(g=>{
-    const cards = g.items.map(r=>{
-      const title = esc(r[cfg.titleKey]||'');
-      const badge = cfg.badgeKey && r[cfg.badgeKey] ? '<span class="badge neutral">'+esc(r[cfg.badgeKey])+'</span>' : '';
-      const urg = cfg.urgencyKey && r[cfg.urgencyKey] ? '<span class="badge '+urgencyClass(r[cfg.urgencyKey])+'">'+esc(r[cfg.urgencyKey])+'</span>' : '';
-      const sub = cfg.subKey && r[cfg.subKey] ? '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(r[cfg.subKey])+'</div>' : '';
-      const note = cfg.noteKey && r[cfg.noteKey] ? '<p class="card-note">'+esc(r[cfg.noteKey])+'</p>' : '';
-      const btn = mapsBtn(r[cfg.linkKey], 'Apri in Maps');
-      return '<div class="card">'+
-        '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
-        '<div class="card-main"><div class="card-title">'+title+'</div>'+sub+'</div>'+
-        '<div class="rightcluster">'+badge+urg+editBtn(section, r._id)+'</div>'+
-        '</div>'+note+
-        (btn ? '<div class="btnrow">'+btn+'</div>' : '')+
-        '</div>';
-    }).join('');
-    return '<div class="group-label">'+esc(g.key)+'</div>'+cards;
+    return '<div class="group-label">'+esc(g.key)+'</div>'+g.items.map(buildCard).join('');
   }).join('');
 }
 function renderAttrazioni(){
   const allRows = state.data.attrazioni;
-  const chips = filterChipsHtml('attrazioni', allRows, FILTER_CONFIG.attrazioni);
-  const body = renderGroupedByCity('attrazioni', applyFilter('attrazioni', allRows), { titleKey:'Attrazione', badgeKey:'Categoria', urgencyKey:'Urgenza', noteKey:'Note', linkKey:'Link Google Maps' });
-  return renderTopbar('Attrazioni')+'<div class="section-wrap">'+chips+body+'</div>'+fabHtml('attrazioni');
+  const dragging = reorderMode && currentView === 'attrazioni';
+  const chips = dragging ? '' : filterChipsHtml('attrazioni', allRows, FILTER_CONFIG.attrazioni);
+  const rows = dragging ? allRows : applyFilter('attrazioni', allRows);
+  const body = renderGroupedByCity('attrazioni', rows, { titleKey:'Attrazione', badgeKey:'Categoria', urgencyKey:'Urgenza', noteKey:'Note', linkKey:'Link Google Maps' }, !dragging);
+  return renderTopbar('Attrazioni')+'<div class="section-wrap">'+chips+body+'</div>'+(dragging?'':fabHtml('attrazioni'));
 }
 function renderCibo(){
   const allRows = state.data.cibo;
-  const chips = filterChipsHtml('cibo', allRows, FILTER_CONFIG.cibo);
-  const body = renderGroupedByCity('cibo', applyFilter('cibo', allRows), { titleKey:'Specialità / Piatto', badgeKey:'Categoria', noteKey:'Note e Suggerimenti', linkKey:'Link Google Maps' });
-  return renderTopbar('Cibo & Ristoranti')+'<div class="section-wrap">'+chips+body+'</div>'+fabHtml('cibo');
+  const dragging = reorderMode && currentView === 'cibo';
+  const chips = dragging ? '' : filterChipsHtml('cibo', allRows, FILTER_CONFIG.cibo);
+  const rows = dragging ? allRows : applyFilter('cibo', allRows);
+  const body = renderGroupedByCity('cibo', rows, { titleKey:'Specialità / Piatto', badgeKey:'Categoria', noteKey:'Note e Suggerimenti', linkKey:'Link Google Maps' }, !dragging);
+  return renderTopbar('Cibo & Ristoranti')+'<div class="section-wrap">'+chips+body+'</div>'+(dragging?'':fabHtml('cibo'));
 }
 function renderShopping(){
   const allRows = state.data.shopping;
-  const chips = filterChipsHtml('shopping', allRows, FILTER_CONFIG.shopping);
-  const body = renderGroupedByCity('shopping', applyFilter('shopping', allRows), { titleKey:'Brand / Negozio', badgeKey:'Categoria', subKey:'Quartiere', noteKey:'Articolo Mirato / Note', linkKey:'Link Google Maps' });
-  return renderTopbar('Shopping')+'<div class="section-wrap">'+chips+body+'</div>'+fabHtml('shopping');
+  const dragging = reorderMode && currentView === 'shopping';
+  const chips = dragging ? '' : filterChipsHtml('shopping', allRows, FILTER_CONFIG.shopping);
+  const rows = dragging ? allRows : applyFilter('shopping', allRows);
+  const body = renderGroupedByCity('shopping', rows, { titleKey:'Brand / Negozio', badgeKey:'Categoria', subKey:'Quartiere', noteKey:'Articolo Mirato / Note', linkKey:'Link Google Maps' }, !dragging);
+  return renderTopbar('Shopping')+'<div class="section-wrap">'+chips+body+'</div>'+(dragging?'':fabHtml('shopping'));
 }
 
 /* ---------------- guida ---------------- */
 function renderGuida(){
   const allRows = state.data.guida;
-  const chips = filterChipsHtml('guida', allRows, FILTER_CONFIG.guida);
-  const rows = applyFilter('guida', allRows);
+  const dragging = reorderMode && currentView === 'guida';
+  const chips = dragging ? '' : filterChipsHtml('guida', allRows, FILTER_CONFIG.guida);
+  const rows = dragging ? allRows : applyFilter('guida', allRows);
   const items = rows.map(r=>{
-    return '<div class="card">'+
+    const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-title">'+esc(r['Argomento']||'')+'</div>'+editBtn('guida', r._id)+
       '</div>'+
       '<p class="card-body" style="margin-top:8px">'+esc(r['Dettagli Operativi']||'')+'</p>'+
       '</div>';
+    return reorderWrap('guida', r._id, card);
   }).join('');
-  return renderTopbar('Guida pratica')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessun argomento con questo filtro.</div>')+'</div>'+fabHtml('guida');
+  return renderTopbar('Guida pratica')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessun argomento con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('guida'));
 }
 
 /* ---------------- frasi utili ---------------- */
 function renderFrasi(){
   const allRows = state.data.frasi;
-  const chips = filterChipsHtml('frasi', allRows, FILTER_CONFIG.frasi);
-  const rows = applyFilter('frasi', allRows);
+  const dragging = reorderMode && currentView === 'frasi';
+  const chips = dragging ? '' : filterChipsHtml('frasi', allRows, FILTER_CONFIG.frasi);
+  const rows = dragging ? allRows : applyFilter('frasi', allRows);
   const items = rows.map(r=>{
     const jp = r['Giapponese']||'';
-    return '<div class="card">'+
+    const card = '<div class="card">'+
       '<div class="card-row" style="justify-content:space-between;align-items:flex-start">'+
       '<div class="card-main">'+
       '<div class="card-note" style="margin-top:0;color:var(--text-secondary)">'+esc(r['Italiano']||'')+'</div>'+
@@ -940,16 +1050,18 @@ function renderFrasi(){
       '</div>'+
       '<div class="btnrow"><button class="pillbtn filled" data-speak="'+esc(jp)+'">🔊 Ascolta</button></div>'+
       '</div>';
+    return reorderWrap('frasi', r._id, card);
   }).join('');
-  return renderTopbar('Frasi utili')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna frase con questo filtro.</div>')+'</div>'+fabHtml('frasi');
+  return renderTopbar('Frasi utili')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessuna frase con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('frasi'));
 }
 
 /* ---------------- emergenze ---------------- */
 const EMERGENCY_ICON = { 'Polizia (Emergenze)':'🚓', 'Ambulanza / Pompieri':'🚑', 'Ambasciata Italiana':'🇮🇹', 'Blocco Carte / Revolut':'💳', 'Assicurazione Sanitaria':'🩺' };
 function renderEmergenze(){
   const allRows = state.data.emergenze;
-  const chips = filterChipsHtml('emergenze', allRows, FILTER_CONFIG.emergenze);
-  const rows = applyFilter('emergenze', allRows);
+  const dragging = reorderMode && currentView === 'emergenze';
+  const chips = dragging ? '' : filterChipsHtml('emergenze', allRows, FILTER_CONFIG.emergenze);
+  const rows = dragging ? allRows : applyFilter('emergenze', allRows);
   const items = rows.map(r=>{
     const label = r['Contatto / Servizio']||'';
     const icon = EMERGENCY_ICON[label] || '📞';
@@ -957,7 +1069,7 @@ function renderEmergenze(){
     const numHtml = tel
       ? '<a class="pillbtn filled" href="'+tel+'">📞 '+esc(r['Numero / Riferimento'])+'</a>'
       : '<span class="badge status">'+esc(r['Numero / Riferimento']||'')+'</span>';
-    return '<div class="card">'+
+    const card = '<div class="card">'+
       '<div class="card-row" style="align-items:center;gap:10px;justify-content:space-between">'+
       '<div class="card-row" style="align-items:center;gap:10px"><span style="font-size:22px">'+icon+'</span>'+
       '<div class="card-main"><div class="card-title" style="margin-bottom:0">'+esc(label)+'</div></div></div>'+
@@ -966,8 +1078,9 @@ function renderEmergenze(){
       '<div class="btnrow">'+numHtml+'</div>'+
       '<p class="card-note">'+esc(r['Dettagli Operativi']||'')+'</p>'+
       '</div>';
+    return reorderWrap('emergenze', r._id, card);
   }).join('');
-  return renderTopbar('Emergenze')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessun contatto con questo filtro.</div>')+'</div>'+fabHtml('emergenze');
+  return renderTopbar('Emergenze')+'<div class="section-wrap">'+chips+(items||'<div class="empty">Nessun contatto con questo filtro.</div>')+'</div>'+(dragging?'':fabHtml('emergenze'));
 }
 
 /* ---------------- budget ---------------- */
@@ -985,13 +1098,14 @@ function budgetTotals(){
 function renderBudget(){
   const t = budgetTotals();
   const allRows = state.data.budget;
-  const chips = filterChipsHtml('budget', allRows, FILTER_CONFIG.budget);
-  const filteredRows = applyFilter('budget', allRows);
+  const dragging = reorderMode && currentView === 'budget';
+  const chips = dragging ? '' : filterChipsHtml('budget', allRows, FILTER_CONFIG.budget);
+  const filteredRows = dragging ? allRows : applyFilter('budget', allRows);
   const rows = filteredRows.map(r=>{
     const c = computeBudgetRow(r);
     const diffClass = c.diffYen >= 0 ? 'pos' : 'neg';
     const d = fmtDateBadge(r['Data']);
-    return '<div class="card budget-card" data-budget-row="'+r._id+'">'+
+    const card = '<div class="card budget-card" data-budget-row="'+r._id+'">'+
       '<div class="top-line">'+
       '<div><div class="card-title" style="margin-bottom:1px">'+esc(d.wd)+' '+d.num+' '+d.mon+'</div>'+
       '<div class="card-note" style="margin:0;color:var(--text-secondary)">'+esc(r['Note / Categoria']||'')+'</div></div>'+
@@ -1007,6 +1121,7 @@ function renderBudget(){
       '<div class="budget-eur-small" id="budget-eur-'+r._id+'">'+fmtEur(yenToEur(c.spesaYen))+'</div>'+
       '<div class="diff-line"><span>Differenza</span><span class="val '+diffClass+'" id="budget-diff-'+r._id+'">'+(c.diffYen>=0?'+':'')+fmtYen(c.diffYen)+' · '+fmtEur(yenToEur(c.diffYen))+'</span></div>'+
       '</div>';
+    return reorderWrap('budget', r._id, card);
   }).join('');
   const diffClassT = t.diff >= 0 ? 'diff-pos' : 'diff-neg';
   return renderTopbar('Budget')+
@@ -1024,7 +1139,7 @@ function renderBudget(){
     '</div></div>'+
     chips+
     (rows||'<div class="empty">Nessuna voce con questo filtro.</div>')+
-    '</div>'+fabHtml('budget');
+    '</div>'+(dragging?'':fabHtml('budget'));
 }
 function updateBudgetRowUI(id){
   const row = state.data.budget.find(r=>r._id===id);
@@ -1119,13 +1234,43 @@ function renderSettings(){
 }
 function sameColor(a,b){ return String(a).toLowerCase() === String(b).toLowerCase(); }
 
+/* ---------------- mappa ---------------- */
+function renderMappa(){
+  const all = collectMapPlaces();
+  const counts = {};
+  all.forEach(p=>{ counts[p.source] = (counts[p.source]||0)+1; });
+  const sourcesPresent = Object.keys(MAP_SOURCE_META).filter(k=>counts[k]);
+  let chipsHtml = '';
+  if(sourcesPresent.length >= 2){
+    const chips = ['<button class="filter-chip'+(!mapFilter?' active':'')+'" data-map-filter="">Tutti · '+all.length+'</button>']
+      .concat(sourcesPresent.map(k=>'<button class="filter-chip'+(mapFilter===k?' active':'')+'" data-map-filter="'+k+'">'+MAP_SOURCE_META[k].icon+' '+esc(MAP_SOURCE_META[k].label)+' · '+counts[k]+'</button>'));
+    chipsHtml = '<div class="filter-row">'+chips.join('')+'</div>';
+  }
+  const shown = mapFilter ? all.filter(p=>p.source===mapFilter) : all;
+  const items = shown.map(p=>{
+    const url = mapsUrl(p.link);
+    if(!url) return '';
+    const meta = MAP_SOURCE_META[p.source];
+    return '<a class="card map-card" href="'+url+'" target="_blank" rel="noopener">'+
+      '<div class="card-row" style="justify-content:space-between;align-items:center">'+
+      '<div class="card-main">'+
+      '<span class="badge neutral">'+meta.icon+' '+esc(meta.label)+'</span>'+
+      '<div class="card-title" style="margin-top:8px">'+esc(p.title||'')+'</div>'+
+      (p.subtitle ? '<div class="card-note" style="margin-top:2px">'+esc(p.subtitle)+'</div>' : '')+
+      '</div>'+
+      '<span class="map-chevron">›</span>'+
+      '</div></a>';
+  }).join('');
+  return renderTopbar('Mappa')+'<div class="section-wrap">'+chipsHtml+(items||'<div class="empty">Nessun luogo con link Google Maps ancora salvato.</div>')+'</div>';
+}
+
 /* ---------------- render dispatch ---------------- */
 const RENDERERS = {
   home: renderHome, settings: renderSettings,
   itinerario: renderItinerario, hotel: renderHotel, trasporti: renderTrasporti,
   app: renderApp, valigia: renderValigia, attrazioni: renderAttrazioni,
   guida: renderGuida, frasi: renderFrasi, cibo: renderCibo, shopping: renderShopping,
-  emergenze: renderEmergenze, budget: renderBudget
+  emergenze: renderEmergenze, budget: renderBudget, mappa: renderMappa
 };
 function render(){
   const meta = SECTION_META[currentView];
@@ -1287,6 +1432,7 @@ function normalizeIncomingState(incoming){
     }
   });
   base.data = data;
+  base.sectionOrder = sanitizeSectionOrder(incoming.sectionOrder);
   return base;
 }
 function handleImportFile(evt){
@@ -1342,7 +1488,8 @@ async function exportBackupExcel(){
     {'Impostazione':'Tema', 'Valore':state.theme},
     {'Impostazione':'Colore accento', 'Valore':state.accent},
     {'Impostazione':'Cambio (¥ per 1€)', 'Valore':state.exchangeRate},
-    {'Impostazione':'Cambio aggiornato il', 'Valore':state.exchangeRateUpdatedAt || ''}
+    {'Impostazione':'Cambio aggiornato il', 'Valore':state.exchangeRateUpdatedAt || ''},
+    {'Impostazione':'Ordine sezioni', 'Valore':state.sectionOrder.join(',')}
   ], ['Impostazione','Valore']);
 
   const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
@@ -1370,6 +1517,7 @@ function findSheet(wb, fragment){
 function sheetRows(ws){ return ws ? XLSX.utils.sheet_to_json(ws, {defval:''}) : []; }
 function buildStateFromWorkbook(wb){
   const base = Object.assign({}, DEFAULTS, { theme:state.theme, accent:state.accent, exchangeRate:state.exchangeRate });
+  base.sectionOrder = sanitizeSectionOrder(state.sectionOrder);
   const data = {};
 
   const itin = sheetRows(findSheet(wb,'itinerario'));
@@ -1430,6 +1578,7 @@ function buildStateFromWorkbook(wb){
     else if(k.indexOf('colore')>-1) base.accent = String(v);
     else if(k.indexOf('cambio aggiornato')>-1) base.exchangeRateUpdatedAt = String(v);
     else if(k.indexOf('cambio')>-1) base.exchangeRate = parseFloat(v) || base.exchangeRate;
+    else if(k.indexOf('ordine sezioni')>-1) base.sectionOrder = sanitizeSectionOrder(String(v).split(','));
   });
 
   base.data = data;
@@ -1455,7 +1604,9 @@ function handleImportExcelFile(evt){
 /* ---------------- events ---------------- */
 document.addEventListener('click', (e)=>{
   const navEl = e.target.closest('[data-nav]');
-  if(navEl){ navigateTo(navEl.dataset.nav); return; }
+  if(navEl){ if(reorderMode) return; navigateTo(navEl.dataset.nav); return; }
+  const reorderToggleEl = e.target.closest('[data-action="toggle-reorder"]');
+  if(reorderToggleEl){ reorderMode = !reorderMode; dragCtx = null; render(); return; }
   const backEl = e.target.closest('[data-action="back"]');
   if(backEl){ goBack(); return; }
   const addEl = e.target.closest('[data-add]');
@@ -1483,6 +1634,12 @@ document.addEventListener('click', (e)=>{
     render();
     return;
   }
+  const mapFilterEl = e.target.closest('[data-map-filter]');
+  if(mapFilterEl){
+    mapFilter = mapFilterEl.dataset.mapFilter || null;
+    render();
+    return;
+  }
   const toggleDoneEl = e.target.closest('[data-toggle-done]');
   if(toggleDoneEl){
     const item = state.data.valigia.find(x=>x._id===toggleDoneEl.dataset.toggleDone);
@@ -1506,7 +1663,7 @@ document.addEventListener('click', (e)=>{
   const resetAllBtn = e.target.closest('[data-action="reset-all"]');
   if(resetAllBtn){
     if(confirm('Ripristinare tutti i dati originali del file? Le voci aggiunte o modificate andranno perse.')){
-      state = Object.assign({}, DEFAULTS, { data: buildInitialData() });
+      state = Object.assign({}, DEFAULTS, { data: buildInitialData(), sectionOrder: sanitizeSectionOrder(null) });
       saveState(); applyTheme(); render();
     }
     return;
@@ -1557,7 +1714,7 @@ document.getElementById('importExcelInput').addEventListener('change', handleImp
   function setTransitionOn(on){ appEl.style.transition = on ? 'transform .28s cubic-bezier(.32,.72,0,1)' : 'none'; }
 
   document.addEventListener('touchstart', (e) => {
-    if(currentView === 'home'){ active = false; return; }
+    if(currentView === 'home' || reorderMode){ active = false; return; }
     const modalRoot = document.getElementById('modalRoot');
     if(modalRoot && modalRoot.classList.contains('open')){ active = false; return; }
     const tag = document.activeElement && document.activeElement.tagName;
@@ -1608,6 +1765,121 @@ document.getElementById('importExcelInput').addEventListener('change', handleImp
     endDrag((t.clientX - startX) > THRESHOLD);
   });
   document.addEventListener('touchcancel', () => { endDrag(false); });
+})();
+
+/* ---------------- drag-to-reorder engine (cards within a section, or home tiles) ---------------- */
+(function setupReorderDrag(){
+  let ctx = null; /* active drag session: { container, cfg, item, clone, grabDX, grabDY } */
+
+  function getConfig(){
+    if(currentView === 'home') return { containerSel:'.grid', itemSel:'.tile', idAttr:'nav' };
+    if(SECTION_ORDER.indexOf(currentView) > -1) return { containerSel:'.section-wrap', itemSel:'.drag-wrap', idAttr:'reorderId' };
+    return null;
+  }
+  function findItemFromTarget(target){
+    if(currentView === 'home') return target.closest('.tile');
+    const handle = target.closest('.drag-handle');
+    return handle ? handle.closest('.drag-wrap') : null;
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    if(!reorderMode) return;
+    const item = findItemFromTarget(e.target);
+    if(!item) return;
+    const cfg = getConfig();
+    if(!cfg) return;
+    const container = item.closest(cfg.containerSel);
+    if(!container) return;
+
+    const rect = item.getBoundingClientRect();
+    const touch = e.touches[0];
+    const clone = item.cloneNode(true);
+    clone.classList.add(currentView === 'home' ? 'tile-chosen' : 'drag-chosen');
+    clone.style.position = 'fixed';
+    clone.style.left = rect.left + 'px';
+    clone.style.top = rect.top + 'px';
+    clone.style.width = rect.width + 'px';
+    clone.style.height = rect.height + 'px';
+    clone.style.margin = '0';
+    clone.style.pointerEvents = 'none';
+    clone.style.zIndex = '200';
+    document.body.appendChild(clone);
+
+    item.classList.add(currentView === 'home' ? 'tile-ghost' : 'drag-ghost');
+
+    ctx = { container, cfg, item, clone, grabDX: touch.clientX - rect.left, grabDY: touch.clientY - rect.top };
+    e.preventDefault();
+  }, { passive:false });
+
+  document.addEventListener('touchmove', (e) => {
+    if(!ctx) return;
+    const touch = e.touches[0];
+    const x = touch.clientX - ctx.grabDX;
+    const y = touch.clientY - ctx.grabDY;
+    ctx.clone.style.left = x + 'px';
+    ctx.clone.style.top = y + 'px';
+
+    const cloneRect = ctx.clone.getBoundingClientRect();
+    const cx = cloneRect.left + cloneRect.width / 2;
+    const cy = cloneRect.top + cloneRect.height / 2;
+
+    const siblings = Array.from(ctx.container.querySelectorAll(ctx.cfg.itemSel)).filter(el => el !== ctx.item);
+    let target = null, after = false;
+    for(const sib of siblings){
+      const r = sib.getBoundingClientRect();
+      if(cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom){
+        target = sib;
+        after = (cy > r.top + r.height / 2) || (cx > r.left + r.width / 2);
+        break;
+      }
+    }
+    if(target){
+      if(after) target.after(ctx.item);
+      else target.before(ctx.item);
+    } else if(siblings.length){
+      const first = siblings[0].getBoundingClientRect();
+      const last = siblings[siblings.length - 1].getBoundingClientRect();
+      if(cy < first.top) siblings[0].before(ctx.item);
+      else if(cy > last.bottom) siblings[siblings.length - 1].after(ctx.item);
+    }
+
+    const edge = 70;
+    if(touch.clientY < edge) window.scrollBy(0, -16);
+    else if(touch.clientY > window.innerHeight - edge) window.scrollBy(0, 16);
+
+    e.preventDefault();
+  }, { passive:false });
+
+  function endDrag(){
+    if(!ctx) return;
+    ctx.clone.remove();
+    ctx.item.classList.remove('drag-ghost', 'tile-ghost');
+    commitOrderFromDOM();
+    ctx = null;
+  }
+  document.addEventListener('touchend', endDrag);
+  document.addEventListener('touchcancel', endDrag);
+
+  function commitOrderFromDOM(){
+    if(currentView === 'home'){
+      const ids = Array.from(document.querySelectorAll('.grid .tile')).map(el => el.dataset.nav);
+      state.sectionOrder = sanitizeSectionOrder(ids);
+      saveState();
+      render();
+      return;
+    }
+    if(SECTION_ORDER.indexOf(currentView) > -1){
+      const section = currentView;
+      const ids = Array.from(document.querySelectorAll('.section-wrap .drag-wrap')).map(el => el.dataset.reorderId);
+      const byId = {};
+      state.data[section].forEach(it => { byId[it._id] = it; });
+      const reordered = ids.map(id => byId[id]).filter(Boolean);
+      state.data[section].forEach(it => { if(ids.indexOf(it._id) === -1) reordered.push(it); });
+      state.data[section] = reordered;
+      saveState();
+      render();
+    }
+  }
 })();
 
 /* ---------------- init ---------------- */
